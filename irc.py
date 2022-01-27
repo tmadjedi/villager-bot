@@ -51,7 +51,7 @@ class IRC:
         for channel in channels: 
             self.irc.send(("JOIN #" + channel + "\r\n").encode())
             self.logger.info(f'Joined {channel}')
-            # rate limit for joins is 50 per 15 seconds
+            # rate limit for joins is 20 per 10 seconds
             time.sleep(0.51)
 
     def disconnect(self):
