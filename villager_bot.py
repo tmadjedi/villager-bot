@@ -1,3 +1,4 @@
+import asyncio
 import requests
 import sqlite3
 import logging
@@ -9,9 +10,10 @@ from logging.handlers import TimedRotatingFileHandler
 from irc import IRC
 
 
-class VillagerInfo:
+class VillagerBot:
 
     def __init__(self, config):
+
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
         
@@ -31,6 +33,14 @@ class VillagerInfo:
 
         self.config = config
 
+        conn = sqlite3.connect(self.config['db'])
+        cursor = conn.cursor()
+
+        cursor.execute('CREATE TABLE IF NOT EXISTS channels (username text)')
+
+        cursor.close()
+        conn.close()
+
         with open('final_villager_info.json') as f:
             villagers = json.load(f)
 
@@ -38,10 +48,17 @@ class VillagerInfo:
         self.cooldowns = {}
 
     def connect(self):
+        irc = IRC()
+        irc.connect(self.config['server'],
+            self.config['port'],
+            self.config['nick'],
+            self.config['oauth'])
+        self.irc = irc
+
+    async def join_all_channels(self):
         conn = sqlite3.connect(self.config['db'])
         cursor = conn.cursor()
 
-        cursor.execute('CREATE TABLE IF NOT EXISTS channels (username text)')
         cursor.execute('SELECT username FROM channels')
         rows = cursor.fetchall()
 
@@ -49,16 +66,12 @@ class VillagerInfo:
         conn.close()
 
         channels = [row[0] for row in rows]
+        channels.append('isabellesays')
         channels = set(channels)
-        channels.add('isabellesays')
 
-        irc = IRC()
-        irc.connect(self.config['server'],
-            self.config['port'],
-            channels,
-            self.config['nick'],
-            self.config['oauth'])
-        self.irc = irc
+        for channel in channels:
+            self.irc.join(channel)
+            await asyncio.sleep(0.51)
 
     def say_info(self, channel, command, sent_time):
         sent_time = datetime.datetime.fromtimestamp(sent_time / 1000)
@@ -150,15 +163,16 @@ class VillagerInfo:
         self.irc.privmsg('isabellesays', 'Please see the panels below for usage details!')
         self.logger.info(f'HELPED')
 
-    def run_forever(self):
-        self.connect()
-
+    async def bot_loop(self):
         while True:
+            await asyncio.sleep(0.01)
             try:
-                events = self.irc.read_events()
+                events = self.irc.get_events()
             except RuntimeError:
-                self.connect()
-                continue
+                self.logger.debug('Error encountered, stopping loop')
+                loop = asyncio.get_event_loop()
+                loop.stop()
+                break
 
             for event in events:
                 if (event['code'] == 'PRIVMSG' and
@@ -181,3 +195,17 @@ class VillagerInfo:
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!leave')):
                     self.handle_remove(event['tags']['display-name'].lower())
+
+    def run_forever(self):
+        while True:
+            self.connect()
+
+            loop = asyncio.get_event_loop()
+
+            join = loop.create_task(self.join_all_channels())
+            bot_loop = loop.create_task(self.bot_loop())
+
+            loop.run_forever()
+
+            join.cancel()
+            bot_loop.cancel()
