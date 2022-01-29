@@ -1,6 +1,7 @@
 from villager_bot import VillagerBot
 
 import json
+import asyncio
 
 
 if __name__ == '__main__':
@@ -8,4 +9,5 @@ if __name__ == '__main__':
         config = json.load(f)
 
     bot = VillagerBot(config)
-    bot.run_forever()
+    asyncio.run(bot.run_forever())
+

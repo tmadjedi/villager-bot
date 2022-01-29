@@ -1,3 +1,4 @@
+import asyncio
 import socket
 import sys
 import logging
@@ -7,11 +8,7 @@ from logging.handlers import TimedRotatingFileHandler
  
 class IRC:
  
-    irc = socket.socket()
-  
     def __init__(self):  
-        self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
 
@@ -28,37 +25,46 @@ class IRC:
         logger.addHandler(handler)
         logger.addHandler(ch)
         self.logger = logger
- 
-    def privmsg(self, chan, msg):
-        self.irc.send(("PRIVMSG #" + chan + " :" + msg + "\r\n").encode())
 
-    def send(self, msg):
-        self.irc.send((msg + "\r\n").encode())
+    async def privmsg(self, chan, msg):
+        self.writer.write(("PRIVMSG #" + chan + " :" + msg + "\r\n").encode())
+        await self.writer.drain()
+
+    async def send(self, msg):
+        self.writer.write((msg + "\r\n").encode())
+        await self.writer.drain()
  
-    def connect(self, server, port, nick, oauth):
+    async def connect(self, server, port, nick, oauth):
         self.logger.info(f'Connecting to {server}')
 
-        self.irc.connect((server, port))
-        self.irc.send(('CAP REQ :twitch.tv/tags\r\n').encode())
-        self.irc.send(('CAP REQ :twitch.tv/commands\r\n').encode())
-        self.irc.send((f'PASS {oauth} \r\n').encode())
-        self.irc.send((f'NICK {nick} \r\n').encode())
+        self.reader, self.writer = await asyncio.open_connection(host=server, port=port)
 
-        messages = self.irc.recv(2048)
+        connect_lines = [
+            'CAP REQ :twitch.tv/tags\r\n'.encode(),
+            'CAP REQ :twitch.tv/commands\r\n'.encode(),
+            f'PASS {oauth} \r\n'.encode(),
+            f'NICK {nick} \r\n'.encode()]
+
+        self.writer.writelines(connect_lines)
+        await self.writer.drain()
+
+        messages = await self.reader.read(2048)
         messages = messages.decode()
         lines = filter(None, messages.split('\r\n'))
 
         for line in lines:
             self.logger.info(line)
 
-    def disconnect(self):
-        self.irc.close()
+    async def disconnect(self):
+        self.writer.close()
+        await self.writer.wait_closed()
 
-    def join(self, channel):
-        self.irc.send((f'JOIN #{channel}\r\n').encode())
+    async def join(self, channel):
+        self.writer.write((f'JOIN #{channel}\r\n').encode())
+        await self.writer.drain()
         self.logger.info(f'Joined {channel}')
 
-    def parse_line(self, line):
+    async def parse_line(self, line):
         event = {
             'tags': '',
             'code': '',
@@ -90,31 +96,16 @@ class IRC:
                 event['message'] = parts[1]
  
         if event['code'] == 'PING':                      
-            self.irc.send(("PONG :" + event['message'] + "\r\n").encode()) 
+            self.writer.write(("PONG :" + event['message'] + "\r\n").encode()) 
+            await self.writer.drain()
             self.logger.info('Sent PONG')
  
         self.logger.debug(f'Event: {event}')
         return event
 
-    def read_lines(self):
-        lines = ''
-
-        while True:
-            message = self.irc.recv(2048)
-
-            if not message:
-                self.disconnect()
-                raise RuntimeError('Socket closed unexpectedly') 
-                
-            message = message.decode()
-            lines += message
-
-            if lines.endswith('\r\n'):
-                lines = filter(None, lines.split('\r\n'))
-                return list(lines)
-
-    def get_events(self):
-        lines = self.read_lines()
-        self.logger.debug(f'Lines: {lines}')
-        events = [self.parse_line(line) for line in lines]
+    async def get_events(self):
+        message = await self.reader.readuntil(separator='\r\n'.encode())
+        message = message.decode()
+        self.logger.debug(f'Message: {message}')
+        events = [await self.parse_line(message)]
         return events

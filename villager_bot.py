@@ -47,15 +47,16 @@ class VillagerBot:
         self.villagers = villagers[0]
         self.cooldowns = {}
 
-    def connect(self):
+    async def connect(self):
         irc = IRC()
-        irc.connect(self.config['server'],
+        await irc.connect(self.config['server'],
             self.config['port'],
             self.config['nick'],
             self.config['oauth'])
         self.irc = irc
 
     async def join_all_channels(self):
+        print('joining channels')
         conn = sqlite3.connect(self.config['db'])
         cursor = conn.cursor()
 
@@ -70,15 +71,15 @@ class VillagerBot:
         channels = set(channels)
 
         for channel in channels:
-            self.irc.join(channel)
+            await self.irc.join(channel)
             await asyncio.sleep(0.51)
 
-    def say_info(self, channel, command, sent_time):
+    async def say_info(self, channel, command, sent_time):
         sent_time = datetime.datetime.fromtimestamp(sent_time / 1000)
 
         tokens = command.split(None, 1)
         if len(tokens) < 2:
-            self.irc.privmsg(channel,
+            await self.irc.privmsg(channel,
                 'Usage: !villager <villager name>')
             return
 
@@ -92,7 +93,7 @@ class VillagerBot:
             if match:
                 message += f" did you mean {self.villagers[match[0]]['name']}?"
 
-            self.irc.privmsg(channel, message)
+            await self.irc.privmsg(channel, message)
             response_time = datetime.datetime.now() - sent_time
             self.logger.info(f'{channel} - {response_time.total_seconds()} - {tokens[1]} - {villager_name} - NOT FOUND')
             return
@@ -118,11 +119,11 @@ class VillagerBot:
 
         info = self.villagers[villager_name]
         message = f"{info['name']} is a {info['personality'].lower()} {info['species'].lower()}, {info['phrase']}! More info: {info['link']}"
-        self.irc.privmsg(channel, message)
+        await self.irc.privmsg(channel, message)
         response_time = datetime.datetime.now() - sent_time
         self.logger.info(f'{channel} - {response_time.total_seconds()} - {info["name"]}')
 
-    def handle_add(self, username):
+    async def handle_add(self, username):
         conn = sqlite3.connect(self.config['db'])
         cursor = conn.cursor()
 
@@ -131,7 +132,7 @@ class VillagerBot:
         channels = [row[0] for row in rows]
 
         if username in channels:
-            self.irc.privmsg('isabellesays', f'I am already in your channel, {username}')
+            await self.irc.privmsg('isabellesays', f'I am already in your channel, {username}')
             self.logger.info(f'{username} - ALREADY JOINED')
             return
 
@@ -141,11 +142,11 @@ class VillagerBot:
         cursor.close()
         conn.close()
 
-        self.irc.send(f'JOIN #{username}')
-        self.irc.privmsg('isabellesays', f'I have joined your channel, {username}')
+        await self.irc.send(f'JOIN #{username}')
+        await self.irc.privmsg('isabellesays', f'I have joined your channel, {username}')
         self.logger.info(f'{username} - JOINED')
 
-    def handle_remove(self, username):
+    async def handle_remove(self, username):
         conn = sqlite3.connect(self.config['db'])
         cursor = conn.cursor()
 
@@ -155,57 +156,46 @@ class VillagerBot:
         cursor.close()
         conn.close()
 
-        self.irc.send(f'PART #{username}')
-        self.irc.privmsg('isabellesays', f'I have left your channel, @{username}')
+        await self.irc.send(f'PART #{username}')
+        await self.irc.privmsg('isabellesays', f'I have left your channel, @{username}')
         self.logger.info(f'{username} - LEFT')
 
-    def handle_help(self):
-        self.irc.privmsg('isabellesays', 'Please see the panels below for usage details!')
+    async def handle_help(self):
+        await self.irc.privmsg('isabellesays', 'Please see the panels below for usage details!')
         self.logger.info(f'HELPED')
 
     async def bot_loop(self):
         while True:
-            await asyncio.sleep(0.01)
             try:
-                events = self.irc.get_events()
+                events = await self.irc.get_events()
             except RuntimeError:
                 self.logger.debug('Error encountered, stopping loop')
-                loop = asyncio.get_event_loop()
-                loop.stop()
                 break
-
+            
             for event in events:
                 if (event['code'] == 'PRIVMSG' and
                     event['message'].startswith('!villager')):
-                    self.say_info(event['channel'][1:],
+                    await self.say_info(event['channel'][1:],
                                   event['message'],
                                   int(event['tags']['tmi-sent-ts']))
 
                 elif (event['code'] == 'PRIVMSG' and
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!help')):
-                    self.handle_help()
+                    await self.handle_help()
 
                 elif (event['code'] == 'PRIVMSG' and
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!join')):
-                    self.handle_add(event['tags']['display-name'].lower())
+                    await self.handle_add(event['tags']['display-name'].lower())
 
                 elif (event['code'] == 'PRIVMSG' and
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!leave')):
-                    self.handle_remove(event['tags']['display-name'].lower())
+                    await self.handle_remove(event['tags']['display-name'].lower())
 
-    def run_forever(self):
+    async def run_forever(self):
         while True:
-            self.connect()
+            await self.connect()
 
-            loop = asyncio.get_event_loop()
-
-            join = loop.create_task(self.join_all_channels())
-            bot_loop = loop.create_task(self.bot_loop())
-
-            loop.run_forever()
-
-            join.cancel()
-            bot_loop.cancel()
+            L = await asyncio.gather(self.join_all_channels(), self.bot_loop())
