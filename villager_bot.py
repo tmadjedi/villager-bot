@@ -170,6 +170,8 @@ class VillagerBot:
                 events = await self.irc.get_events()
             except RuntimeError:
                 self.logger.debug('Error encountered, stopping loop')
+                self.irc.disconnect()
+                self.irc.close()
                 break
             
             for event in events:

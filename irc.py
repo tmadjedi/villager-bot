@@ -59,6 +59,9 @@ class IRC:
         self.writer.close()
         await self.writer.wait_closed()
 
+    async def close(self):
+        self.logger.handlers = []
+
     async def join(self, channel):
         self.writer.write((f'JOIN #{channel}\r\n').encode())
         await self.writer.drain()
