@@ -198,6 +198,11 @@ class VillagerBot:
 
     async def run_forever(self):
         while True:
-            await self.connect()
+            resp = await asyncio.gather(self.connect(),
+                                        return_exceptions=True)
+            if resp[0] != None:
+                continue
 
-            L = await asyncio.gather(self.join_all_channels(), self.bot_loop())
+            resp = await asyncio.gather(self.join_all_channels(),
+                                       self.bot_loop(),
+                                       return_exceptions=True)
