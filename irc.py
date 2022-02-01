@@ -76,7 +76,7 @@ class IRC:
 
         if line.startswith('@'):
             tags = line[1:].split(' ')[0]
-            event['tags'] = dict([tag.split('=') for tag in tags.split(';')])
+            event['tags'] = dict([tag.split('=', 1) for tag in tags.split(';')])
             line = line.split(' ', 1)
             line = line[1]
 
