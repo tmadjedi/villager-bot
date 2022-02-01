@@ -1,4 +1,4 @@
-from villager_bot import VillagerBot
+from villager_bot.villager_bot import VillagerBot
 
 import json
 import asyncio

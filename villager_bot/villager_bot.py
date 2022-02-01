@@ -1,13 +1,13 @@
 import asyncio
 import requests
-import sqlite3
+import psycopg2
 import logging
 import datetime
 import json
 import difflib
 from logging.handlers import TimedRotatingFileHandler
 
-from irc import IRC
+from irc.irc import IRC
 
 
 class VillagerBot:
@@ -33,7 +33,11 @@ class VillagerBot:
 
         self.config = config
 
-        conn = sqlite3.connect(self.config['db'])
+        conn = psycopg2.connect(user=self.config["dbuser"],
+                                password=self.config["dbpassword"],
+                                host=self.config["dbhost"],
+                                port=self.config["dbport"],
+                                database=self.config["db"])
         cursor = conn.cursor()
 
         cursor.execute('CREATE TABLE IF NOT EXISTS channels (username text)')
