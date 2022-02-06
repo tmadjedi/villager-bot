@@ -4,6 +4,7 @@ import psycopg2
 import logging
 import datetime
 import json
+import os
 import difflib
 from logging.handlers import TimedRotatingFileHandler
 
@@ -12,7 +13,7 @@ from irc.irc import IRC
 
 class VillagerBot:
 
-    def __init__(self, config):
+    def __init__(self):
 
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
@@ -31,8 +32,6 @@ class VillagerBot:
         logger.addHandler(ch)
         self.logger = logger
 
-        self.config = config
-
         with open('final_villager_info.json') as f:
             villagers = json.load(f)
 
@@ -40,19 +39,19 @@ class VillagerBot:
         self.cooldowns = {}
 
     def _get_db_uri(self):
-        token = f'Bearer {self.config["HEROKU_API_KEY"]}'
+        token = f'Bearer {os.environ.get("HEROKU_API_KEY")}'
         headers = { 'Authorization': token,
                     'Accept': 'Accept: application/vnd.heroku+json; version=3' }
-        r = requests.get(f'https://api.heroku.com/apps/{self.config["app_name"]}/config-vars', headers=headers)
+        r = requests.get(f'https://api.heroku.com/apps/{os.environ.get("APP_NAME")}/config-vars', headers=headers)
         json = r.json()
         return json["DATABASE_URL"]
 
     async def connect(self):
         irc = IRC()
-        await irc.connect(self.config['server'],
-            self.config['port'],
-            self.config['nick'],
-            self.config['oauth'])
+        await irc.connect(os.environ.get('IRC_SERVER'),
+            os.environ.get('IRC_PORT'),
+            os.environ.get('IRC_NICK'),
+            os.environ.get('OAUTH'))
         self.irc = irc
 
     async def join_all_channels(self):
@@ -217,6 +216,9 @@ class VillagerBot:
             resp = await asyncio.gather(self.connect(),
                                         return_exceptions=True)
             if resp[0] != None:
+                if self.irc:
+                    self.irc.disconnect()
+                    self.irc.close()
                 continue
 
             resp = await asyncio.gather(self.join_all_channels(),
