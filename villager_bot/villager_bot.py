@@ -1,17 +1,20 @@
+import asyncio
 import requests
-import sqlite3
+import psycopg2
 import logging
 import datetime
 import json
+import os
 import difflib
 from logging.handlers import TimedRotatingFileHandler
 
-from irc import IRC
+from irc.irc import IRC
 
 
-class VillagerInfo:
+class VillagerBot:
 
-    def __init__(self, config):
+    def __init__(self):
+
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
         
@@ -29,19 +32,32 @@ class VillagerInfo:
         logger.addHandler(ch)
         self.logger = logger
 
-        self.config = config
-
         with open('final_villager_info.json') as f:
             villagers = json.load(f)
 
         self.villagers = villagers[0]
         self.cooldowns = {}
 
-    def connect(self):
-        conn = sqlite3.connect(self.config['db'])
+    def _get_db_uri(self):
+        token = f'Bearer {os.environ.get("HEROKU_API_KEY")}'
+        headers = { 'Authorization': token,
+                    'Accept': 'Accept: application/vnd.heroku+json; version=3' }
+        r = requests.get(f'https://api.heroku.com/apps/{os.environ.get("APP_NAME")}/config-vars', headers=headers)
+        json = r.json()
+        return json["DATABASE_URL"]
+
+    async def connect(self):
+        irc = IRC()
+        await irc.connect(os.environ.get('IRC_SERVER'),
+            os.environ.get('IRC_PORT'),
+            os.environ.get('IRC_NICK'),
+            os.environ.get('OAUTH'))
+        self.irc = irc
+
+    async def join_all_channels(self):
+        conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
-        cursor.execute('CREATE TABLE IF NOT EXISTS channels (username text)')
         cursor.execute('SELECT username FROM channels')
         rows = cursor.fetchall()
 
@@ -49,23 +65,34 @@ class VillagerInfo:
         conn.close()
 
         channels = [row[0] for row in rows]
+        channels.append('isabellesays')
         channels = set(channels)
-        channels.add('isabellesays')
 
-        irc = IRC()
-        irc.connect(self.config['server'],
-            self.config['port'],
-            channels,
-            self.config['nick'],
-            self.config['oauth'])
-        self.irc = irc
+        await self.irc.join('spoongalaxy')
+        await asyncio.sleep(0.51)
 
-    def say_info(self, channel, command, sent_time):
+        for channel in channels:
+            print(f'Joining {channel}')
+            await self.irc.join(channel)
+            await asyncio.sleep(0.51)
+
+    def log_status(self, channel, user, query, status):
+        conn = psycopg2.connect(self._get_db_uri())
+        cursor = conn.cursor()
+
+        cursor.execute('INSERT INTO usage (channel, username, query, time, command_status) VALUES (%s, %s, %s, NOW(), %s)',
+                       [channel, user, query, status])
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+    async def say_info(self, channel, command, user_id, sent_time):
         sent_time = datetime.datetime.fromtimestamp(sent_time / 1000)
 
         tokens = command.split(None, 1)
         if len(tokens) < 2:
-            self.irc.privmsg(channel,
+            await self.irc.privmsg(channel,
                 'Usage: !villager <villager name>')
             return
 
@@ -79,9 +106,10 @@ class VillagerInfo:
             if match:
                 message += f" did you mean {self.villagers[match[0]]['name']}?"
 
-            self.irc.privmsg(channel, message)
+            await self.irc.privmsg(channel, message)
             response_time = datetime.datetime.now() - sent_time
             self.logger.info(f'{channel} - {response_time.total_seconds()} - {tokens[1]} - {villager_name} - NOT FOUND')
+            self.log_status(channel, user_id, villager_name, 'NOT FOUND')
             return
 
         if channel not in self.cooldowns:
@@ -90,6 +118,7 @@ class VillagerInfo:
         elif channel in self.cooldowns and villager_name in self.cooldowns[channel]:
             if self.cooldowns[channel][villager_name] > datetime.datetime.now():
                 self.logger.info(f'{channel} - ON COOLDOWN - {villager_name}')
+                self.log_status(channel, user_id, villager_name, 'COOLDOWN')
                 return
             else:
                 del self.cooldowns[channel][villager_name]
@@ -105,12 +134,13 @@ class VillagerInfo:
 
         info = self.villagers[villager_name]
         message = f"{info['name']} is a {info['personality'].lower()} {info['species'].lower()}, {info['phrase']}! More info: {info['link']}"
-        self.irc.privmsg(channel, message)
+        await self.irc.privmsg(channel, message)
         response_time = datetime.datetime.now() - sent_time
         self.logger.info(f'{channel} - {response_time.total_seconds()} - {info["name"]}')
+        self.log_status(channel, user_id, villager_name, 'SUCCESS')
 
-    def handle_add(self, username):
-        conn = sqlite3.connect(self.config['db'])
+    async def handle_add(self, username):
+        conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
         cursor.execute('SELECT username FROM channels')
@@ -118,66 +148,86 @@ class VillagerInfo:
         channels = [row[0] for row in rows]
 
         if username in channels:
-            self.irc.privmsg('isabellesays', f'I am already in your channel, {username}')
+            await self.irc.privmsg('isabellesays', f'I am already in your channel, {username}')
             self.logger.info(f'{username} - ALREADY JOINED')
             return
 
-        cursor.execute('INSERT INTO channels VALUES (?)', (username,))
+        cursor.execute('INSERT INTO channels VALUES (%s)', (username,))
         conn.commit()
 
         cursor.close()
         conn.close()
 
-        self.irc.send(f'JOIN #{username}')
-        self.irc.privmsg('isabellesays', f'I have joined your channel, {username}')
+        await self.irc.send(f'JOIN #{username}')
+        await self.irc.privmsg('isabellesays', f'I have joined your channel, {username}')
         self.logger.info(f'{username} - JOINED')
 
-    def handle_remove(self, username):
-        conn = sqlite3.connect(self.config['db'])
+    async def handle_remove(self, username):
+        conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
-        cursor.execute('DELETE FROM channels WHERE username = (?)', (username,))
+        cursor.execute('DELETE FROM channels WHERE username = (%s)', (username,))
         conn.commit()
 
         cursor.close()
         conn.close()
 
-        self.irc.send(f'PART #{username}')
-        self.irc.privmsg('isabellesays', f'I have left your channel, @{username}')
+        await self.irc.send(f'PART #{username}')
+        await self.irc.privmsg('isabellesays', f'I have left your channel, @{username}')
         self.logger.info(f'{username} - LEFT')
 
-    def handle_help(self):
-        self.irc.privmsg('isabellesays', 'Please see the panels below for usage details!')
+    async def handle_help(self):
+        await self.irc.privmsg('isabellesays', 'Please see the panels below for usage details!')
         self.logger.info(f'HELPED')
 
-    def run_forever(self):
-        self.connect()
-
+    async def bot_loop(self):
         while True:
             try:
-                events = self.irc.read_events()
+                events = await self.irc.get_events()
             except RuntimeError:
-                self.connect()
-                continue
-
+                self.logger.debug('Error encountered, stopping loop')
+                break
+            
             for event in events:
                 if (event['code'] == 'PRIVMSG' and
                     event['message'].startswith('!villager')):
-                    self.say_info(event['channel'][1:],
+                    await self.say_info(event['channel'][1:],
                                   event['message'],
+                                  event['tags']['user-id'],
                                   int(event['tags']['tmi-sent-ts']))
 
                 elif (event['code'] == 'PRIVMSG' and
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!help')):
-                    self.handle_help()
+                    await self.handle_help()
 
                 elif (event['code'] == 'PRIVMSG' and
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!join')):
-                    self.handle_add(event['tags']['display-name'].lower())
+                    await self.handle_add(event['tags']['display-name'].lower())
 
                 elif (event['code'] == 'PRIVMSG' and
                       event['channel'][1:] == 'isabellesays' and
                       event['message'].startswith('!leave')):
-                    self.handle_remove(event['tags']['display-name'].lower())
+                    await self.handle_remove(event['tags']['display-name'].lower())
+
+    async def run_forever(self):
+        while True:
+            resp = await asyncio.gather(self.connect(),
+                                        return_exceptions=True)
+            if resp[0] != None:
+                if self.irc:
+                    self.irc.disconnect()
+                    self.irc.close()
+                continue
+
+            resp = await asyncio.gather(self.join_all_channels(),
+                                       self.bot_loop(),
+                                       return_exceptions=True)
+
+            self.irc.disconnect()
+            self.irc.close()
+
+            self.logger.debug('Error encountered')
+            for e in resp:
+                self.logger.debug(e)

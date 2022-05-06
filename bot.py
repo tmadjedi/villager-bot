@@ -1,11 +1,13 @@
-from villager_info import VillagerInfo
+from villager_bot.villager_bot import VillagerBot
 
 import json
+import asyncio
+
+from dotenv import load_dotenv
 
 
 if __name__ == '__main__':
-    with open('config.json') as f:
-        config = json.load(f)
+    load_dotenv()
 
-    bot = VillagerInfo(config)
-    bot.run_forever()
+    bot = VillagerBot()
+    asyncio.run(bot.run_forever())
