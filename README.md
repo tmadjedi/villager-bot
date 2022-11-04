@@ -30,9 +30,11 @@ docker build \
 ## Deployment
 Deploy the created docker image, and run it with the following commands.
 ```
+heroku login
+heroku container:login
 docker tag <image id> registry.heroku.com/<app name>/worker
 docker push registry.heroku.com/<app name>/worker
 heroku container:release worker -a <app name>
 # check status
-heroku logs
+heroku logs --tail --app <app name>
 ```
