@@ -37,6 +37,7 @@ class VillagerBot:
 
         self.villagers = villagers[0]
         self.cooldowns = {}
+        self.schema = os.environ.get('SCHEMA')
 
     def _get_db_uri(self):
         token = f'Bearer {os.environ.get("HEROKU_API_KEY")}'
@@ -58,7 +59,7 @@ class VillagerBot:
         conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
-        cursor.execute('SELECT username FROM channels')
+        cursor.execute(f'SELECT username FROM {self.schema}.channels')
         rows = cursor.fetchall()
 
         cursor.close()
@@ -80,7 +81,7 @@ class VillagerBot:
         conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
-        cursor.execute('INSERT INTO usage (channel, username, query, time, command_status) VALUES (%s, %s, %s, NOW(), %s)',
+        cursor.execute(f'INSERT INTO {self.schema}.usage (channel, username, query, time, command_status) VALUES (%s, %s, %s, NOW(), %s)',
                        [channel, user, query, status])
         conn.commit()
 
@@ -143,7 +144,7 @@ class VillagerBot:
         conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
-        cursor.execute('SELECT username FROM channels')
+        cursor.execute(f'SELECT username FROM {self.schema}.channels')
         rows = cursor.fetchall()
         channels = [row[0] for row in rows]
 
@@ -152,7 +153,7 @@ class VillagerBot:
             self.logger.info(f'{username} - ALREADY JOINED')
             return
 
-        cursor.execute('INSERT INTO channels VALUES (%s)', (username,))
+        cursor.execute(f'INSERT INTO {self.schema}.channels VALUES (%s)', (username,))
         conn.commit()
 
         cursor.close()
@@ -166,7 +167,7 @@ class VillagerBot:
         conn = psycopg2.connect(self._get_db_uri())
         cursor = conn.cursor()
 
-        cursor.execute('DELETE FROM channels WHERE username = (%s)', (username,))
+        cursor.execute(f'DELETE FROM {self.schema}.channels WHERE username = (%s)', (username,))
         conn.commit()
 
         cursor.close()
