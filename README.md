@@ -9,6 +9,7 @@ OAUTH=<twitch oauth token>
 HEROKU_API_KEY=<heroku API key>
 APP_NAME=<heroku app name>
 SCHEMA=<db schema>
+DATABASE_URL=<database url, auto populated in heroku>
 ```
 
 ## Build
@@ -26,7 +27,8 @@ sudo docker run villager-bot \
 -e OAUTH=<> \
 -e HEROKU_API_KEY=<> \
 -e APP_NAME=<> \
--e SCHEMA=<>
+-e SCHEMA=<> \
+-e DATABASE_URL=<>
 ```
 ## Heroku Setup
 Set stack to container

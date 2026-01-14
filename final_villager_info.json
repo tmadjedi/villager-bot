@@ -1,5 +1,22 @@
 [
     {
+        "mineru": {
+            "name": "Mineru",
+            "gender": "Female",
+            "personality": "Snooty",
+            "species": "Deer",
+            "phrase": "construct",
+            "link": "https://nookipedia.com/wiki/Mineru"
+        },
+        "tulin": {
+            "name": "Tulin",
+            "gender": "Male",
+            "personality": "Jock",
+            "species": "Bird",
+            "birthday": "Unknown",
+            "phrase": "gust",
+            "link": "https://nookipedia.com/wiki/Tulin"
+        },
         "ace": {
             "message": "Here's some information on Ace:",
             "name": "Ace",

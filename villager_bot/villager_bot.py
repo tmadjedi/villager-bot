@@ -95,12 +95,12 @@ class VillagerBot:
         villager_name = tokens[1].lower().replace(' ', '_')
 
         if villager_name not in self.villagers:
-            message = 'Couldn\'t find the specified villager :('
+            message = 'I don\'t know that villager!'
 
             villagers = self.villagers.keys()
             match = difflib.get_close_matches(villager_name, villagers, n=1)
             if match:
-                message += f" did you mean {self.villagers[match[0]]['name']}?"
+                message += f" Did you mean {self.villagers[match[0]]['name']}?"
 
             await self.irc.privmsg(channel, message)
             response_time = datetime.datetime.now() - sent_time
@@ -155,7 +155,9 @@ class VillagerBot:
         conn.close()
 
         await self.irc.send(f'JOIN #{username}')
-        await self.irc.privmsg('isabellesays', f'I have joined your channel, {username}')
+        await self.irc.privmsg('isabellesays', f'I joined your channel, {username}! Please make me a Moderator, or I won\'t be able to stay in your chat.')
+        await self.irc.privmsg('isabellesays', 'If you don\'t see me in your chat, please make me a moderator and then do the !join command again.')
+        await self.irc.privmsg('isabellesays', 'You can make me a moderator by typing this in your channel chat: /mod isabellesays')
         self.logger.info(f'{username} - JOINED')
 
     async def handle_remove(self, username):
