@@ -28,13 +28,25 @@ sudo docker run villager-bot \
 -e APP_NAME=<> \
 -e SCHEMA=<>
 ```
+## Heroku Setup
+Set stack to container
+```
+heroku stack:set container -a <app name>
+```
+
+Add heroku remote
+```
+heroku git:remote -a <app name>
+```
 
 ## Deployment
 Deploy the created docker image, and run it with the following commands.
+Push to heroku remote
 ```
-docker tag <image id> registry.heroku.com/<app name>/worker
-docker push registry.heroku.com/<app name>/worker
-heroku container:release worker -a <app name>
-# check status
+git push heroku main
+```
+
+Check status
+```
 heroku logs
 ```

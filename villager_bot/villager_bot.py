@@ -57,10 +57,15 @@ class VillagerBot:
 
     async def join_all_channels(self):
         conn = psycopg2.connect(self._get_db_uri())
+        self.logger.info('connected to db')
         cursor = conn.cursor()
+        self.logger.info(f'schema - {self.schema}')
 
         cursor.execute(f'SELECT username FROM {self.schema}.channels')
+        self.logger.info('executed query')
         rows = cursor.fetchall()
+        self.logger.info('got rows')
+        self.logger.info(rows)
 
         cursor.close()
         conn.close()
