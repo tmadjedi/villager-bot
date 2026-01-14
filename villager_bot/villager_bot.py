@@ -40,12 +40,7 @@ class VillagerBot:
         self.schema = os.environ.get('SCHEMA')
 
     def _get_db_uri(self):
-        token = f'Bearer {os.environ.get("HEROKU_API_KEY")}'
-        headers = { 'Authorization': token,
-                    'Accept': 'Accept: application/vnd.heroku+json; version=3' }
-        r = requests.get(f'https://api.heroku.com/apps/{os.environ.get("APP_NAME")}/config-vars', headers=headers)
-        json = r.json()
-        return json["DATABASE_URL"]
+        return os.environ.get('DATABASE_URL')
 
     async def connect(self):
         irc = IRC()
@@ -57,15 +52,10 @@ class VillagerBot:
 
     async def join_all_channels(self):
         conn = psycopg2.connect(self._get_db_uri())
-        self.logger.info('connected to db')
         cursor = conn.cursor()
-        self.logger.info(f'schema - {self.schema}')
 
         cursor.execute(f'SELECT username FROM {self.schema}.channels')
-        self.logger.info('executed query')
         rows = cursor.fetchall()
-        self.logger.info('got rows')
-        self.logger.info(rows)
 
         cursor.close()
         conn.close()
